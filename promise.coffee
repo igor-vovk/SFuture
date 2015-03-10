@@ -1,6 +1,36 @@
-class SPromise
+## Utility functions
+
+# Handlers just pass values to promise, working as side-effecting identity function
+passSuccessToPromise = (p) -> (s) -> p.success(s)
+passFailureToPromise = (p) -> (e) -> p.failure(e)
+
+# Create new promise, call a function passing a promise, and return a future from this promise
+# Used in most mutating operations.
+#
+# ((SPromise[A]) -> Unit) -> SFuture[A]
+newPromise = (f) ->
+  p = SPromise.apply()
+  f(p)
+
+  p.future()
+
+# Try/catch pattern, close promise with the result of a function or an error
+#
+# (SPromise[A], () -> A) -> SPromise[A]
+tryCompletingPromise = (p, f) ->
+  try p.success(f())
+  catch error
+    p.failed(error)
+
+  return
+
+## Main classes section
+
+class window.SPromise
 
   _ref = null
+
+  ## Static methods ##
 
   # () -> SPromise
   @apply: -> new SPromise()
@@ -10,6 +40,8 @@ class SPromise
 
   # (String) -> SPromise
   @failed: (err) -> SPromise.apply().failure(err)
+
+  ## End of static methods ##
 
   # () -> SFuture[A]
   future: ->
@@ -24,10 +56,7 @@ class SPromise
   #
   # (SFuture[A]) -> Unit
   join: (otherFuture) ->
-    otherFuture.onComplete(
-      (s) => @success(s)
-      (e) => @failure(e)
-    )
+    otherFuture.onComplete(passSuccessToPromise(@), passFailureToPromise(@))
 
     return
 
@@ -41,7 +70,7 @@ class SPromise
 
     return
 
-class SFuture
+class window.SFuture
   _handlers =
     s: []
     f: []
@@ -49,22 +78,14 @@ class SFuture
   _stateSet = 0
   _state = null
 
-  # ((SPromise[A]) -> Unit) -> SFuture[A]
-  newPromise = (f) ->
-    p = SPromise.apply()
-    f(p)
-
-    p.future()
+  ## Static methods ##
 
   # Executes passed code (pseudo-)asynchronously, returning future, containing result of passed func
   #
   # (() -> A) -> SFuture[A]
   @apply: (func, timeout = 0) -> newPromise((p) ->
     delayedF = ->
-      try
-        p.success(func())
-      catch error
-        p.failure(error)
+      tryCompletingPromise(p, func)
 
       return
 
@@ -111,9 +132,11 @@ class SFuture
     return
   )
 
+  ## End of static methods ##
+
   # (A, Boolean) -> Unit
   setState: (s, succ = yes) ->
-    # Ignore new state if future already completed
+    # Ignore new state if a future is already completed
     if @isCompleted() then return
 
     _state = s
@@ -157,12 +180,8 @@ class SFuture
   # (A -> B) -> SFuture[B]
   map: (mapper) -> newPromise((p) =>
     @onComplete(
-      (s) ->
-        try
-          p.success(mapper(s))
-        catch error
-          p.failure(error)
-      (e) -> p.failure(e)
+      (s) -> tryCompletingPromise(p, () -> mapper(s))
+      passFailureToPromise(p)
     )
 
     return
@@ -176,7 +195,7 @@ class SFuture
           p.join(flatMapper(s))
         catch error
           p.failure(error)
-      (e) -> p.failure(e)
+      passFailureToPromise(p)
     )
 
     return
@@ -188,22 +207,22 @@ class SFuture
       (s) ->
         if filter(s) then p.success(s)
         else p.failure("SFuture.filter predicate is not satisfied")
-      (e) -> p.failure(e)
+      passFailureToPromise(p)
     )
 
     return
   )
 
-  # Zip `this` and `that` futures, resulting new future, contained an array with results of two futures
+  # Zip `this` and `that` futures, resulting new future, contained an array with a results of two futures
   #
   # (SFuture[B]) -> SFuture[(A, B)]
   zip: (that) -> newPromise((p) ->
     @onComplete(
       (s) -> that.onComplete(
         (thatS) -> p.success([s, thatS])
-        (e) -> p.failure(e)
+        passFailureToPromise(p)
       )
-      (e) -> p.failure(e)
+      passFailureToPromise(p)
     )
 
     return
@@ -214,10 +233,10 @@ class SFuture
   # (SFuture[A]) -> SFuture[A]
   fallbackTo: (that) -> newPromise((p) =>
     @onComplete(
-      (s) -> p.success s
+      passSuccessToPromise(p)
       (e) -> that.onComplete(
-        (thatS) -> p.success thatS
-        () -> p.failure e # Use the first failure as the failure
+        passSuccessToPromise(p)
+        () -> p.failure(e) # Use the first failure as the failure
       )
     )
 
@@ -226,12 +245,9 @@ class SFuture
 
   # ((String) -> B) -> SFuture[B]
   recover: (f) -> newPromise((p) =>
-    @onFailure((e) ->
-      try p.success(f(e))
-      catch error
-        p.failed(error)
-
-      return
+    @onComplete(
+      passSuccessToPromise(p)
+      (e) -> tryCompletingPromise(p, () -> f(e))
     )
 
     return
@@ -239,18 +255,16 @@ class SFuture
 
   # ((String) -> SFuture[B]) -> SFuture[B]
   recoverWith: (f) -> newPromise((p) =>
-    @onFailure((e) ->
-      future =
-        try f(e)
-        catch error
-          SFuture.failed(error)
+    @onComplete(
+      passSuccessToPromise(p)
+      (e) ->
+        p.join(
+          try f(e)
+          catch error
+            SFuture.failed(error)
+        )
 
-      future.onComplete(
-        (thatS) -> p.success(thatS)
-        (thatE) -> p.failure(thatE)
-      )
-
-      return
+        return
     )
 
     return
