@@ -212,11 +212,15 @@ SFuture = (function() {
   SFuture.prototype.filter = function(filter) {
     var p;
     p = SPromise.apply();
-    if ((filter(s))(p.success(s))) {
-
-    } else {
-      p.failure("SFuture.filter predicate is not satisfied");
-    }
+    onComplete(function(s) {
+      if (filter(s)) {
+        return p.success(s);
+      } else {
+        return p.failure("SFuture.filter predicate is not satisfied");
+      }
+    }, function(e) {
+      return p.failure(e);
+    });
     return p.future();
   };
 

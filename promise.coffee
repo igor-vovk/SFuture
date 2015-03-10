@@ -13,7 +13,7 @@ class SPromise
 
   # () -> SFuture[A]
   future: ->
-    _ref = new SFuture() if (_ref is null)
+    _ref = new SFuture() if _ref is null
 
     _ref
 
@@ -109,14 +109,14 @@ class SFuture
 
   # (A -> Unit) -> Unit
   onSuccess: (cb) ->
-    if (@isCompleted()) then cb(_state) if (@isSuccessful())
+    if @isCompleted() then cb(_state) if @isSuccessful()
     else _handlers.s.push(cb)
 
     return
 
   # (String -> Unit) -> Unit
   onFailure: (cb) ->
-    if (@isCompleted()) then cb(_state) unless (@isSuccessful())
+    if @isCompleted() then cb(_state) unless (@isSuccessful())
     else _handlers.f.push(cb)
 
     return
@@ -170,8 +170,12 @@ class SFuture
   filter: (filter) ->
     p = SPromise.apply()
 
-    if (filter(s)) p.success(s)
-    else p.failure("SFuture.filter predicate is not satisfied")
+    onComplete(
+      (s) ->
+        if filter(s) then p.success(s)
+        else p.failure("SFuture.filter predicate is not satisfied")
+      (e) -> p.failure(e)
+    )
 
     p.future()
 
