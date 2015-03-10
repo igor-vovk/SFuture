@@ -69,8 +69,11 @@ SFuture = (function() {
 
   _state = null;
 
-  SFuture.apply = function(func) {
+  SFuture.apply = function(func, timeout) {
     var f, p;
+    if (timeout == null) {
+      timeout = 0;
+    }
     p = SPromise.apply();
     f = function() {
       var error;
@@ -81,7 +84,7 @@ SFuture = (function() {
         p.failure(error);
       }
     };
-    setTimeout(f, 0);
+    setTimeout(f, timeout);
     return p.future();
   };
 

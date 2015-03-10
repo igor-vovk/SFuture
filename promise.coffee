@@ -52,7 +52,7 @@ class SFuture
   # Executes passed code (pseudo-)asynchronously, returning future, containing result of passed func
   #
   # (() -> A) -> SFuture[A]
-  @apply: (func) ->
+  @apply: (func, timeout = 0) ->
     p = SPromise.apply()
     f = ->
       try
@@ -62,7 +62,7 @@ class SFuture
 
       return
 
-    setTimeout(f, 0)
+    setTimeout(f, timeout)
 
     p.future()
 
