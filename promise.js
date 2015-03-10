@@ -56,7 +56,7 @@ SPromise = (function() {
 })();
 
 SFuture = (function() {
-  var _handlers, _state, _stateSet;
+  var newPromise, _handlers, _state, _stateSet;
 
   function SFuture() {}
 
@@ -69,23 +69,30 @@ SFuture = (function() {
 
   _state = null;
 
+  newPromise = function(f) {
+    var p;
+    p = SPromise.apply();
+    f(p);
+    return p.future();
+  };
+
   SFuture.apply = function(func, timeout) {
-    var f, p;
     if (timeout == null) {
       timeout = 0;
     }
-    p = SPromise.apply();
-    f = function() {
-      var error;
-      try {
-        p.success(func());
-      } catch (_error) {
-        error = _error;
-        p.failure(error);
-      }
-    };
-    setTimeout(f, timeout);
-    return p.future();
+    return newPromise(function(p) {
+      var delayedF;
+      delayedF = function() {
+        var error;
+        try {
+          p.success(func());
+        } catch (_error) {
+          error = _error;
+          p.failure(error);
+        }
+      };
+      setTimeout(delayedF, timeout);
+    });
   };
 
   SFuture.failed = function(err) {
@@ -126,13 +133,13 @@ SFuture = (function() {
   };
 
   SFuture.firstCompletedOf = function(futures) {
-    var f, p, _i, _len;
-    p = SPromise.apply();
-    for (_i = 0, _len = futures.length; _i < _len; _i++) {
-      f = futures[_i];
-      p.join(f);
-    }
-    return p.future();
+    return newPromise(function(p) {
+      var f, _i, _len;
+      for (_i = 0, _len = futures.length; _i < _len; _i++) {
+        f = futures[_i];
+        p.join(f);
+      }
+    });
   };
 
   SFuture.prototype.setState = function(s, succ) {
@@ -191,94 +198,136 @@ SFuture = (function() {
   };
 
   SFuture.prototype.map = function(mapper) {
-    var p;
-    p = SPromise.apply();
-    this.onComplete(function(s) {
-      var error;
-      try {
-        return p.success(mapper(s));
-      } catch (_error) {
-        error = _error;
-        return p.failure(error);
-      }
-    }, function(e) {
-      return p.failure(e);
-    });
-    return p.future();
+    return newPromise((function(_this) {
+      return function(p) {
+        _this.onComplete(function(s) {
+          var error;
+          try {
+            return p.success(mapper(s));
+          } catch (_error) {
+            error = _error;
+            return p.failure(error);
+          }
+        }, function(e) {
+          return p.failure(e);
+        });
+      };
+    })(this));
   };
 
   SFuture.prototype.flatMap = function(flatMapper) {
-    var p;
-    p = SPromise.apply();
-    this.onComplete(function(s) {
-      var error;
-      try {
-        return p.join(flatMapper(s));
-      } catch (_error) {
-        error = _error;
-        return p.failure(error);
-      }
-    }, function(e) {
-      return p.failure(e);
-    });
-    return p.future();
+    return newPromise((function(_this) {
+      return function(p) {
+        _this.onComplete(function(s) {
+          var error;
+          try {
+            return p.join(flatMapper(s));
+          } catch (_error) {
+            error = _error;
+            return p.failure(error);
+          }
+        }, function(e) {
+          return p.failure(e);
+        });
+      };
+    })(this));
   };
 
   SFuture.prototype.filter = function(filter) {
-    var p;
-    p = SPromise.apply();
-    onComplete(function(s) {
-      if (filter(s)) {
-        return p.success(s);
-      } else {
-        return p.failure("SFuture.filter predicate is not satisfied");
-      }
-    }, function(e) {
-      return p.failure(e);
-    });
-    return p.future();
-  };
-
-  SFuture.prototype.zip = function(that) {
-    var p;
-    p = SPromise.apply();
-    return this.onComplete(function(s) {
-      return that.onComplete(function(thatS) {
-        return p.success([s, thatS]);
+    return newPromise(function(p) {
+      this.onComplete(function(s) {
+        if (filter(s)) {
+          return p.success(s);
+        } else {
+          return p.failure("SFuture.filter predicate is not satisfied");
+        }
       }, function(e) {
         return p.failure(e);
       });
-    }, function(e) {
-      return p.failure(e);
+    });
+  };
+
+  SFuture.prototype.zip = function(that) {
+    return newPromise(function(p) {
+      this.onComplete(function(s) {
+        return that.onComplete(function(thatS) {
+          return p.success([s, thatS]);
+        }, function(e) {
+          return p.failure(e);
+        });
+      }, function(e) {
+        return p.failure(e);
+      });
     });
   };
 
   SFuture.prototype.fallbackTo = function(that) {
-    var p;
-    p = SPromise.apply();
-    this.onComplete(function(s) {
-      return p.success(s);
-    }, function(e) {
-      return that.onComplete(function(thatS) {
-        return p.success(thatS);
-      }, function() {
-        return p.failure(e);
-      });
-    });
-    return p.future();
+    return newPromise((function(_this) {
+      return function(p) {
+        _this.onComplete(function(s) {
+          return p.success(s);
+        }, function(e) {
+          return that.onComplete(function(thatS) {
+            return p.success(thatS);
+          }, function() {
+            return p.failure(e);
+          });
+        });
+      };
+    })(this));
   };
 
-  SFuture.prototype.andThen = function(succes, failure) {
-    var p;
-    p = SPromise.apply();
-    this.onComplete(function(s) {
-      succes(s);
-      return p.success(s);
-    }, function(e) {
-      failure(e);
-      return p.failure(e);
-    });
-    return p.future();
+  SFuture.prototype.recover = function(f) {
+    return newPromise((function(_this) {
+      return function(p) {
+        _this.onFailure(function(e) {
+          var error;
+          try {
+            p.success(f(e));
+          } catch (_error) {
+            error = _error;
+            p.failed(error);
+          }
+        });
+      };
+    })(this));
+  };
+
+  SFuture.prototype.recoverWith = function(f) {
+    return newPromise((function(_this) {
+      return function(p) {
+        _this.onFailure(function(e) {
+          var error, future;
+          future = (function() {
+            try {
+              return f(e);
+            } catch (_error) {
+              error = _error;
+              return SFuture.failed(error);
+            }
+          })();
+          future.onComplete(function(thatS) {
+            return p.success(thatS);
+          }, function(thatE) {
+            return p.failure(thatE);
+          });
+        });
+      };
+    })(this));
+  };
+
+  SFuture.prototype.andThen = function(sf, ff) {
+    return newPromise((function(_this) {
+      return function(p) {
+        _this.onComplete(function(s) {
+          sf(s);
+          return p.success(s);
+        }, function(e) {
+          ff(e);
+          return p.failure(e);
+        });
+      };
+    })(this));
   };
 
   return SFuture;

@@ -49,12 +49,18 @@ class SFuture
   _stateSet = 0
   _state = null
 
+  # ((SPromise[A]) -> Unit) -> SFuture[A]
+  newPromise = (f) ->
+    p = SPromise.apply()
+    f(p)
+
+    p.future()
+
   # Executes passed code (pseudo-)asynchronously, returning future, containing result of passed func
   #
   # (() -> A) -> SFuture[A]
-  @apply: (func, timeout = 0) ->
-    p = SPromise.apply()
-    f = ->
+  @apply: (func, timeout = 0) -> newPromise((p) ->
+    delayedF = ->
       try
         p.success(func())
       catch error
@@ -62,9 +68,10 @@ class SFuture
 
       return
 
-    setTimeout(f, timeout)
+    setTimeout(delayedF, timeout)
 
-    p.future()
+    return
+  )
 
   # (String) -> SFuture
   @failed: (err) -> SPromise.failed(err).future()
@@ -98,12 +105,11 @@ class SFuture
   # Returns future with value of first completed future
   #
   # (Array[Future[A]]) -> Future[A]
-  @firstCompletedOf: (futures) ->
-    p = SPromise.apply()
-
+  @firstCompletedOf: (futures) -> newPromise((p) ->
     p.join(f) for f in futures
 
-    p.future()
+    return
+  )
 
   # (A, Boolean) -> Unit
   setState: (s, succ = yes) ->
@@ -149,9 +155,7 @@ class SFuture
     else _stateSet > 0
 
   # (A -> B) -> SFuture[B]
-  map: (mapper) ->
-    p = SPromise.apply()
-
+  map: (mapper) -> newPromise((p) =>
     @onComplete(
       (s) ->
         try
@@ -161,12 +165,11 @@ class SFuture
       (e) -> p.failure(e)
     )
 
-    p.future()
+    return
+  )
 
   # (A -> SFuture[B]) -> SFuture[B]
-  flatMap: (flatMapper) ->
-    p = SPromise.apply()
-
+  flatMap: (flatMapper) -> newPromise((p) =>
     @onComplete(
       (s) ->
         try
@@ -176,27 +179,25 @@ class SFuture
       (e) -> p.failure(e)
     )
 
-    p.future()
+    return
+  )
 
   # (A -> Boolean) -> SFuture[A]
-  filter: (filter) ->
-    p = SPromise.apply()
-
-    onComplete(
+  filter: (filter) -> newPromise((p) ->
+    @onComplete(
       (s) ->
         if filter(s) then p.success(s)
         else p.failure("SFuture.filter predicate is not satisfied")
       (e) -> p.failure(e)
     )
 
-    p.future()
+    return
+  )
 
-  # Zip `this` and `that` SFuture, resulting new SFuture, contained an array with results of two SFutures
+  # Zip `this` and `that` futures, resulting new future, contained an array with results of two futures
   #
   # (SFuture[B]) -> SFuture[(A, B)]
-  zip: (that) ->
-    p = SPromise.apply()
-
+  zip: (that) -> newPromise((p) ->
     @onComplete(
       (s) -> that.onComplete(
         (thatS) -> p.success([s, thatS])
@@ -205,10 +206,13 @@ class SFuture
       (e) -> p.failure(e)
     )
 
-  # (SFuture[A]) -> SFuture[A]
-  fallbackTo: (that) ->
-    p = SPromise.apply()
+    return
+  )
 
+  # Fallback to passed future if this future fails
+  #
+  # (SFuture[A]) -> SFuture[A]
+  fallbackTo: (that) -> newPromise((p) =>
     @onComplete(
       (s) -> p.success s
       (e) -> that.onComplete(
@@ -217,18 +221,54 @@ class SFuture
       )
     )
 
-    p.future()
+    return
+  )
+
+  # ((String) -> B) -> SFuture[B]
+  recover: (f) -> newPromise((p) =>
+    @onFailure((e) ->
+      try p.success(f(e))
+      catch error
+        p.failed(error)
+
+      return
+    )
+
+    return
+  )
+
+  # ((String) -> SFuture[B]) -> SFuture[B]
+  recoverWith: (f) -> newPromise((p) =>
+    @onFailure((e) ->
+      future =
+        try f(e)
+        catch error
+          SFuture.failed(error)
+
+      future.onComplete(
+        (thatS) -> p.success(thatS)
+        (thatE) -> p.failure(thatE)
+      )
+
+      return
+    )
+
+    return
+  )
 
   # Same as onComplete, but used for chaining side-effecting operations with normal operations
   #
   # (A -> Unit, String -> Unit) -> SFuture[A]
-  andThen: (succes, failure) ->
-    p = SPromise.apply()
-
+  andThen: (sf, ff) -> newPromise((p) =>
     @onComplete(
-      (s) -> succes(s); p.success(s)
-      (e) -> failure(e); p.failure(e)
+      (s) ->
+        sf(s)
+        p.success(s)
+      (e) ->
+        ff(e)
+        p.failure(e)
     )
 
-    p.future()
+    return
+  )
 
