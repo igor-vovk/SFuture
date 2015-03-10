@@ -110,6 +110,21 @@ SFuture = (function() {
     return result;
   };
 
+  SFuture.traverse = function(list, fn) {
+    var fb, item, result, _i, _len;
+    result = SFuture.successful([]);
+    for (_i = 0, _len = list.length; _i < _len; _i++) {
+      item = list[_i];
+      fb = fn(item);
+      result = result.flatMap(function(items) {
+        return fb.map(function(res) {
+          return items.push(res);
+        });
+      });
+    }
+    return result;
+  };
+
   SFuture.firstCompletedOf = function(futures) {
     var f, p, _i, _len;
     p = SPromise.apply();

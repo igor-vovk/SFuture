@@ -83,6 +83,18 @@ class SFuture
 
     result
 
+  # Used to apply a function to all items of a list in parallel, returning a future with array of resulting items
+  #
+  # (Array[A], A -> Future[B]) -> Future[Array[B]]
+  @traverse: (list, fn) ->
+    result = SFuture.successful([])
+
+    for item in list
+      fb = fn(item)
+      result = result.flatMap((items) -> fb.map((res) -> items.push(res)))
+
+    result
+
   # Returns future with value of first completed future
   #
   # (Array[Future[A]]) -> Future[A]
