@@ -16,7 +16,7 @@ newPromise = (f) ->
 
 # Try/catch pattern, close promise with the result of a function or an error
 #
-# (SPromise[A], () -> A) -> SPromise[A]
+# (SPromise[A], () -> A) -> Unit
 tryCompletingPromise = (p, f) ->
   val = null
   error = null
