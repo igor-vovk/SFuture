@@ -18,9 +18,17 @@ newPromise = (f) ->
 #
 # (SPromise[A], () -> A) -> SPromise[A]
 tryCompletingPromise = (p, f) ->
-  try p.success(f())
+  val = null
+  error = null
+  success = no
+
+  try
+    val = f()
+    success = yes
   catch error
-    p.failed(error)
+  finally
+    if success then p.success(val)
+    else p.failed(error)
 
   return
 
@@ -142,9 +150,16 @@ class window.SFuture
     _state = s
     _stateSet = if succ then 1 else -1
 
-    h(s) for h in (if succ then _handlers.s else _handlers.f)
+    exceptions = []
+
+    for h in (if succ then _handlers.s else _handlers.f)
+      try h(s)
+      catch exc
+        exceptions.push(exc)
 
     _handlers = null # Remove links to handlers
+
+    if exceptions.length > 0 then throw exceptions
 
     return
 

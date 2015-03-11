@@ -22,12 +22,21 @@
   };
 
   tryCompletingPromise = function(p, f) {
-    var error;
+    var error, success, val;
+    val = null;
+    error = null;
+    success = false;
     try {
-      p.success(f());
+      val = f();
+      success = true;
     } catch (_error) {
       error = _error;
-      p.failed(error);
+    } finally {
+      if (success) {
+        p.success(val);
+      } else {
+        p.failed(error);
+      }
     }
   };
 
@@ -152,7 +161,7 @@
     };
 
     SFuture.prototype.setState = function(s, succ) {
-      var h, _i, _len, _ref;
+      var exc, exceptions, h, _i, _len, _ref;
       if (succ == null) {
         succ = true;
       }
@@ -161,12 +170,21 @@
       }
       _state = s;
       _stateSet = succ ? 1 : -1;
+      exceptions = [];
       _ref = (succ ? _handlers.s : _handlers.f);
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         h = _ref[_i];
-        h(s);
+        try {
+          h(s);
+        } catch (_error) {
+          exc = _error;
+          exceptions.push(exc);
+        }
       }
       _handlers = null;
+      if (exceptions.length > 0) {
+        throw exceptions;
+      }
     };
 
     SFuture.prototype.onSuccess = function(cb) {
