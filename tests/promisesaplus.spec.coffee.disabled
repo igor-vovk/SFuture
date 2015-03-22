@@ -1,0 +1,11 @@
+
+xdescribe("Promises/a+", ->
+
+  promisesAplusTests = require "promises-aplus-tests"
+
+  adapter = {
+
+  }
+
+  promisesAplusTests(adapter, (err) -> console.log(err))
+)
