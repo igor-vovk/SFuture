@@ -109,8 +109,8 @@ describe "Combining futures", ->
   describe "using traverse method", ->
 
     fit "should return future with array, from array with values using mapper-function, which returns future", (done) ->
-      futures = [a.Future.apply(1, r100()), a.Future.apply(3, r100()), a.Future.apply(5, r100())]
-      flatMapper = (val) -> a.Future.apply(val, r100())
+      futures = [1, 3, 5]
+      flatMapper = (val) -> a.Future.apply(val * 30, r100())
 
       a.Future.traverse(futures, flatMapper).onComplete(
         (val) ->
